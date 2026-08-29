@@ -40,6 +40,7 @@
     min-height: 112px;
     margin: 16px auto;
     padding: 14px;
+    overflow: visible;
     background: #fff;
     border: 3px solid #222;
     border-radius: 14px;
@@ -159,7 +160,7 @@
 
   .mode-buttons {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 10px;
   }
 
@@ -234,6 +235,7 @@
     .mode-buttons {
       grid-template-columns: 1fr;
     }
+
   }
 
   .mode-description {
@@ -245,17 +247,14 @@
 </style>
 </head>
 <body>
-  <section class="mode-panel" aria-label="게임 모드 선택">
-    <div class="mode-heading">
-      <strong>게임 모드 선택</strong>
-      <span id="mode-status" class="mode-status" aria-live="polite">현재 모드: 일반</span>
-    </div>
-    <div class="mode-buttons">
-      <button id="normal-mode-btn" class="mode-btn active" type="button" aria-pressed="true">일반 모드</button>
-      <button id="special-mode-btn" class="mode-btn special" type="button" aria-pressed="false">특수 모드</button>
-      <button id="bouncy-mode-btn" class="mode-btn bouncy" type="button" aria-pressed="false">튕김 모드</button>
-    </div>
-  </section>
+  <div id="fixed-mode-controls" style="position:fixed;top:8px;right:8px;z-index:999999;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;width:300px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);overflow-y:auto;padding:8px;background:#ffffff;border:3px solid #222222;border-radius:10px;box-shadow:0 3px 12px rgba(0,0,0,.35)">
+    <strong style="display:block;grid-column:1 / -1;text-align:center;color:#222222;font-size:14px">모드 선택</strong>
+    <button id="normal-mode-btn" type="button" aria-pressed="true" style="display:block;width:100%;padding:10px 8px;border:3px solid #f1c40f;border-radius:7px;background:#c0392b;color:#ffffff;font-size:15px;font-weight:bold;cursor:pointer">일반 모드</button>
+    <button id="special-mode-btn" type="button" aria-pressed="false" style="display:block;width:100%;padding:10px 8px;border:3px solid transparent;border-radius:7px;background:#6c5ce7;color:#ffffff;font-size:15px;font-weight:bold;cursor:pointer">특수 모드</button>
+    <button id="bouncy-mode-btn" type="button" aria-pressed="false" style="display:block;width:100%;padding:10px 8px;border:3px solid transparent;border-radius:7px;background:#0984e3;color:#ffffff;font-size:15px;font-weight:bold;cursor:pointer">튕김 모드</button>
+    <button id="transparent-mode-btn" type="button" aria-pressed="false" style="display:block;width:100%;padding:10px 8px;border:3px solid transparent;border-radius:7px;background:#00a896;color:#ffffff;font-size:15px;font-weight:bold;cursor:pointer">투명 모드</button>
+    <span id="mode-status" style="display:block;grid-column:1 / -1;text-align:center;padding:3px;color:#222222;font-size:13px;font-weight:bold;white-space:nowrap" aria-live="polite">현재: 일반</span>
+  </div>
 
   <div id="game-app" class="app">
     <h1>수박게임</h1>
@@ -325,6 +324,7 @@
     const LINE_Y = 150; // 게임오버 판정선 (상단 모드 버튼 영역 아래)
     const DANGER_TIME_LIMIT = 1.2; // 초 단위, 이 시간 이상 라인 위에 머물면 게임오버
     const DROP_COOLDOWN = 0.35; // 초
+    const TRANSPARENT_FADE_TIME = 1.5; // 투명 모드에서 과일이 완전히 사라지는 시간
 
     const canvas = document.getElementById("game-canvas");
     const ctx = canvas.getContext("2d");
@@ -340,6 +340,7 @@
     const normalModeBtn = document.getElementById("normal-mode-btn");
     const specialModeBtn = document.getElementById("special-mode-btn");
     const bouncyModeBtn = document.getElementById("bouncy-mode-btn");
+    const transparentModeBtn = document.getElementById("transparent-mode-btn");
     const modeStatusEl = document.getElementById("mode-status");
 
     let fruits = [];
@@ -509,13 +510,14 @@
         normal: normalModeBtn,
         special: specialModeBtn,
         bouncy: bouncyModeBtn,
+        transparent: transparentModeBtn,
       };
       for (const [buttonMode, button] of Object.entries(buttons)) {
         const selected = gameMode === buttonMode;
-        button.classList.toggle("active", selected);
+        button.style.borderColor = selected ? "#f1c40f" : "transparent";
         button.setAttribute("aria-pressed", String(selected));
       }
-      const modeNames = { normal: "일반", special: "특수", bouncy: "튕김" };
+      const modeNames = { normal: "일반", special: "특수", bouncy: "튕김", transparent: "투명" };
       modeStatusEl.textContent = `현재 모드: ${modeNames[gameMode]}`;
     }
 
@@ -582,11 +584,12 @@
     normalModeBtn.addEventListener("click", () => changeMode("normal"));
     specialModeBtn.addEventListener("click", () => changeMode("special"));
     bouncyModeBtn.addEventListener("click", () => changeMode("bouncy"));
+    transparentModeBtn.addEventListener("click", () => changeMode("transparent"));
 
     window.addEventListener("keydown", (event) => {
       if ((event.code === "Space" || event.key === " ") && !event.repeat) {
         event.preventDefault();
-        const modes = ["normal", "special", "bouncy"];
+        const modes = ["normal", "special", "bouncy", "transparent"];
         changeMode(modes[(modes.indexOf(gameMode) + 1) % modes.length]);
       }
     });
@@ -880,6 +883,9 @@
         ? 1 + Math.sin(progress * Math.PI) * 0.18 - (1 - progress) * 0.35
         : 1;
       ctx.save();
+      if (gameMode === "transparent") {
+        ctx.globalAlpha = Math.max(0, 1 - f.spawnAge / TRANSPARENT_FADE_TIME);
+      }
       ctx.translate(f.x, f.y);
       ctx.scale(scale, scale);
       if (f.kind === "fruit" && f.gravityMultiplier > 1) {
