@@ -12,14 +12,15 @@
   body {
     margin: 0;
     min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    overflow-x: hidden;
     background: #fdf6e3;
     font-family: "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   }
 
   .app {
+    width: max-content;
+    max-width: 100%;
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -29,6 +30,39 @@
   h1 {
     margin: 0 0 16px;
     color: #c0392b;
+  }
+
+  .mode-panel {
+    position: relative;
+    z-index: 1000;
+    display: block;
+    width: min(556px, 100%);
+    min-height: 112px;
+    margin: 16px auto;
+    padding: 14px;
+    background: #fff;
+    border: 3px solid #222;
+    border-radius: 14px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16);
+  }
+
+  .mode-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .mode-heading strong {
+    color: #222;
+    font-size: 17px;
+  }
+
+  .mode-status {
+    color: #555;
+    font-size: 14px;
+    font-weight: bold;
   }
 
   .game-wrap {
@@ -104,6 +138,7 @@
     align-items: center;
     justify-content: center;
     border-radius: 8px;
+    z-index: 10;
   }
 
   .game-over.hidden {
@@ -121,10 +156,108 @@
     margin-top: 0;
     color: #c0392b;
   }
+
+  .mode-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .mode-btn {
+    display: block;
+    width: 100%;
+    min-height: 52px;
+    padding: 13px 16px;
+    border: 0;
+    border-radius: 10px;
+    color: #fff;
+    background: #c0392b;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  .mode-btn.special {
+    background: #6c5ce7;
+  }
+
+  .mode-btn.bouncy {
+    background: #0984e3;
+  }
+
+  .mode-btn.active {
+    outline: 4px solid rgba(241, 196, 15, 0.75);
+    transform: translateY(-1px);
+  }
+
+  @media (max-width: 620px) {
+    .app {
+      width: 100%;
+      padding: 12px;
+    }
+
+    .game-wrap {
+      width: 100%;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .side-panel {
+      width: min(400px, 100%);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .restart-btn {
+      grid-column: 1 / -1;
+    }
+
+    .canvas-wrap,
+    #game-canvas {
+      width: min(400px, 100%);
+    }
+
+    #game-canvas {
+      height: auto;
+    }
+
+    .mode-panel {
+      width: min(400px, 100%);
+    }
+
+    .mode-heading {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .mode-buttons {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .mode-description {
+    margin: 0 0 16px;
+    color: #666;
+    font-size: 13px;
+    line-height: 1.5;
+  }
 </style>
 </head>
 <body>
-  <div class="app">
+  <section class="mode-panel" aria-label="게임 모드 선택">
+    <div class="mode-heading">
+      <strong>게임 모드 선택</strong>
+      <span id="mode-status" class="mode-status" aria-live="polite">현재 모드: 일반</span>
+    </div>
+    <div class="mode-buttons">
+      <button id="normal-mode-btn" class="mode-btn active" type="button" aria-pressed="true">일반 모드</button>
+      <button id="special-mode-btn" class="mode-btn special" type="button" aria-pressed="false">특수 모드</button>
+      <button id="bouncy-mode-btn" class="mode-btn bouncy" type="button" aria-pressed="false">튕김 모드</button>
+    </div>
+  </section>
+
+  <div id="game-app" class="app">
     <h1>수박게임</h1>
 
     <div class="game-wrap">
@@ -170,6 +303,14 @@
       { name: "수박",     emoji: "🍉", radius: 88, color: "#2ecc71", score: 66 },
     ];
 
+    const SPECIAL_BALLS = {
+      bomb: { name: "폭탄", emoji: "💣", radius: 25, color: "#2d3436" },
+      superCherry: { name: "슈퍼체리", emoji: "✨", radius: 23, color: "#fd79a8" },
+      heavy: { name: "고중력", emoji: "🪐", radius: 24, color: "#6c5ce7" },
+    };
+    const SPECIAL_TYPES = Object.keys(SPECIAL_BALLS);
+    const SPECIAL_DROP_CHANCE = 0.22;
+
     const MAX_DROP_TIER = 4; // 처음 떨어뜨릴 수 있는 과일은 체리~레몬 중에서만 등장
     const GRAVITY = 900; // px/s^2
     const WALL_DAMPING = 0.5;
@@ -181,7 +322,7 @@
     // 쌓여서 정지한 과일도 중력/반발 보정 때문에 매 프레임 완전히 0이 되지는 않고
     // 약 20~25px/s 정도의 잔류 진동이 남는다. 그보다 확실히 높은 값으로 "정지"를 판정한다.
     const SETTLED_SPEED_THRESHOLD = 40;
-    const LINE_Y = 90; // 게임오버 판정선
+    const LINE_Y = 150; // 게임오버 판정선 (상단 모드 버튼 영역 아래)
     const DANGER_TIME_LIMIT = 1.2; // 초 단위, 이 시간 이상 라인 위에 머물면 게임오버
     const DROP_COOLDOWN = 0.35; // 초
 
@@ -196,6 +337,10 @@
     const finalScoreEl = document.getElementById("final-score");
     const restartBtn = document.getElementById("restart-btn");
     const gameOverRestartBtn = document.getElementById("game-over-restart-btn");
+    const normalModeBtn = document.getElementById("normal-mode-btn");
+    const specialModeBtn = document.getElementById("special-mode-btn");
+    const bouncyModeBtn = document.getElementById("bouncy-mode-btn");
+    const modeStatusEl = document.getElementById("mode-status");
 
     let fruits = [];
     let score = 0;
@@ -205,13 +350,25 @@
     let effects = [];
     let screenShake = 0;
     let audioContext = null;
+    let gameMode = "normal";
 
-    let currentFruitTier = randomDropTier();
-    let nextFruitTier = randomDropTier();
+    let currentDrop = randomDrop();
+    let nextDrop = randomDrop();
     let pointerX = W / 2;
 
     function randomDropTier() {
       return Math.floor(Math.random() * MAX_DROP_TIER);
+    }
+
+    function randomDrop() {
+      if (gameMode === "special" && Math.random() < SPECIAL_DROP_CHANCE) {
+        return { kind: "special", type: SPECIAL_TYPES[Math.floor(Math.random() * SPECIAL_TYPES.length)] };
+      }
+      return { kind: "fruit", tier: randomDropTier() };
+    }
+
+    function getDropDefinition(drop) {
+      return drop.kind === "fruit" ? FRUITS[drop.tier] : SPECIAL_BALLS[drop.type];
     }
 
     function createFruit(tier, x, y) {
@@ -229,6 +386,18 @@
         dangerTime: 0,
         settled: false,
         spawnAge: 0,
+        kind: "fruit",
+        gravityMultiplier: 1,
+      };
+    }
+
+    function createSpecialBall(type, x, y) {
+      const def = SPECIAL_BALLS[type];
+      return {
+        id: idCounter++, kind: "special", specialType: type,
+        x, y, vx: (Math.random() - 0.5) * 8, vy: 0,
+        radius: def.radius, dangerTime: 0, settled: false, spawnAge: 0,
+        gravityMultiplier: 1,
       };
     }
 
@@ -282,8 +451,8 @@
       });
     }
 
-    function createMergeEffect(x, y, tier) {
-      const color = FRUITS[tier].color;
+    function createMergeEffect(x, y, tier, colorOverride = null) {
+      const color = colorOverride || FRUITS[tier].color;
       effects.push({ type: "ring", x, y, age: 0, duration: 0.38, color });
       for (let i = 0; i < 12; i++) {
         const angle = (Math.PI * 2 * i) / 12 + Math.random() * 0.25;
@@ -316,18 +485,38 @@
       screenShake = Math.max(0, screenShake - 24 * dt);
     }
 
-    function resetGame() {
+    function resetBoard() {
       fruits = [];
       score = 0;
       isGameOver = false;
       dropCooldownTimer = 0;
+      idCounter = 0;
       effects = [];
       screenShake = 0;
-      currentFruitTier = randomDropTier();
-      nextFruitTier = randomDropTier();
+      pointerX = W / 2;
+      currentDrop = randomDrop();
+      nextDrop = randomDrop();
       gameOverEl.classList.add("hidden");
       updateScoreUI();
       updateNextPreviewUI();
+    }
+
+    function changeMode(mode) {
+      gameMode = mode;
+      // 모드가 바뀌면 기존 점수와 모든 과일을 제거하고 새 판을 시작한다.
+      resetBoard();
+      const buttons = {
+        normal: normalModeBtn,
+        special: specialModeBtn,
+        bouncy: bouncyModeBtn,
+      };
+      for (const [buttonMode, button] of Object.entries(buttons)) {
+        const selected = gameMode === buttonMode;
+        button.classList.toggle("active", selected);
+        button.setAttribute("aria-pressed", String(selected));
+      }
+      const modeNames = { normal: "일반", special: "특수", bouncy: "튕김" };
+      modeStatusEl.textContent = `현재 모드: ${modeNames[gameMode]}`;
     }
 
     function updateScoreUI() {
@@ -335,76 +524,105 @@
     }
 
     function updateNextPreviewUI() {
-      nextPreviewEl.textContent = FRUITS[nextFruitTier].emoji;
+      nextPreviewEl.textContent = getDropDefinition(nextDrop).emoji;
     }
 
     // ---- 입력 처리 ----
 
-    function getPointerX(evt) {
+    function getPointerPosition(evt) {
       const rect = canvas.getBoundingClientRect();
-      const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
-      return (clientX - rect.left) * (W / rect.width);
+      const point = evt.touches?.[0] || evt.changedTouches?.[0] || evt;
+      return {
+        x: (point.clientX - rect.left) * (W / rect.width),
+        y: (point.clientY - rect.top) * (H / rect.height),
+      };
     }
 
     canvas.addEventListener("mousemove", (e) => {
-      pointerX = getPointerX(e);
+      pointerX = getPointerPosition(e).x;
     });
 
     canvas.addEventListener("touchmove", (e) => {
-      pointerX = getPointerX(e);
+      pointerX = getPointerPosition(e).x;
       e.preventDefault();
     }, { passive: false });
 
     canvas.addEventListener("click", (e) => {
-      dropCurrentFruit(getPointerX(e));
+      const point = getPointerPosition(e);
+      dropCurrentFruit(point.x);
     });
 
     canvas.addEventListener("touchend", (e) => {
-      dropCurrentFruit(pointerX);
-    });
+      const point = getPointerPosition(e);
+      dropCurrentFruit(point.x);
+      e.preventDefault();
+    }, { passive: false });
 
     function dropCurrentFruit(x) {
       if (isGameOver || dropCooldownTimer > 0) return;
 
-      const radius = FRUITS[currentFruitTier].radius;
+      const def = getDropDefinition(currentDrop);
+      const radius = def.radius;
       const clampedX = Math.max(radius, Math.min(W - radius, x));
 
-      fruits.push(createFruit(currentFruitTier, clampedX, LINE_Y - radius - 10));
-      playDropSound(currentFruitTier);
+      const dropped = currentDrop.kind === "fruit"
+        ? createFruit(currentDrop.tier, clampedX, LINE_Y - radius - 10)
+        : createSpecialBall(currentDrop.type, clampedX, LINE_Y - radius - 10);
+      fruits.push(dropped);
+      playDropSound(currentDrop.kind === "fruit" ? currentDrop.tier : 2);
 
-      currentFruitTier = nextFruitTier;
-      nextFruitTier = randomDropTier();
+      currentDrop = nextDrop;
+      nextDrop = randomDrop();
       updateNextPreviewUI();
       dropCooldownTimer = DROP_COOLDOWN;
     }
 
-    restartBtn.addEventListener("click", resetGame);
-    gameOverRestartBtn.addEventListener("click", resetGame);
+    restartBtn.addEventListener("click", resetBoard);
+    gameOverRestartBtn.addEventListener("click", resetBoard);
+    normalModeBtn.addEventListener("click", () => changeMode("normal"));
+    specialModeBtn.addEventListener("click", () => changeMode("special"));
+    bouncyModeBtn.addEventListener("click", () => changeMode("bouncy"));
+
+    window.addEventListener("keydown", (event) => {
+      if ((event.code === "Space" || event.key === " ") && !event.repeat) {
+        event.preventDefault();
+        const modes = ["normal", "special", "bouncy"];
+        changeMode(modes[(modes.indexOf(gameMode) + 1) % modes.length]);
+      }
+    });
 
     // ---- 물리 & 병합 ----
 
     function stepPhysics(dt) {
+      const isBouncyMode = gameMode === "bouncy";
       for (const f of fruits) {
         f.spawnAge += dt;
-        f.vy += GRAVITY * dt;
+        f.vy += GRAVITY * f.gravityMultiplier * dt;
         f.x += f.vx * dt;
         f.y += f.vy * dt;
-        f.vx *= AIR_FRICTION;
-        f.vy *= AIR_FRICTION;
+        if (!isBouncyMode) {
+          f.vx *= AIR_FRICTION;
+          f.vy *= AIR_FRICTION;
+        }
 
         // 벽 충돌
         if (f.x - f.radius < 0) {
           f.x = f.radius;
-          f.vx *= -WALL_DAMPING;
+          f.vx = Math.max(Math.abs(f.vx) * (isBouncyMode ? 0.98 : WALL_DAMPING), isBouncyMode ? 130 : 0);
         } else if (f.x + f.radius > W) {
           f.x = W - f.radius;
-          f.vx *= -WALL_DAMPING;
+          f.vx = -Math.max(Math.abs(f.vx) * (isBouncyMode ? 0.98 : WALL_DAMPING), isBouncyMode ? 130 : 0);
         }
 
         // 바닥 충돌
         if (f.y + f.radius > H) {
           f.y = H - f.radius;
-          f.vy *= -WALL_DAMPING;
+          if (isBouncyMode) {
+            f.vy = -Math.max(Math.abs(f.vy) * 0.98, 300);
+            if (Math.abs(f.vx) < 90) f.vx += Math.random() < 0.5 ? -140 : 140;
+          } else {
+            f.vy *= -WALL_DAMPING;
+          }
         }
 
         const speed = Math.hypot(f.vx, f.vy);
@@ -414,6 +632,7 @@
         }
       }
 
+      handleSpecialCollisions();
       handleMerges();
 
       // 여러 과일이 동시에 맞닿아 쌓인 상태는 한 번의 보정 패스로는 수렴하지 않으므로
@@ -424,7 +643,98 @@
 
       for (const f of fruits) {
         const speed = Math.abs(f.vx) + Math.abs(f.vy);
-        f.settled = speed < SETTLED_SPEED_THRESHOLD;
+        f.settled = gameMode !== "bouncy" && speed < SETTLED_SPEED_THRESHOLD;
+      }
+    }
+
+    function handleSpecialCollisions() {
+      const consumed = new Set();
+      const spawned = [];
+
+      for (let i = 0; i < fruits.length; i++) {
+        const a = fruits[i];
+        if (consumed.has(a.id) || a.kind !== "special") continue;
+
+        for (let j = i + 1; j < fruits.length; j++) {
+          const b = fruits[j];
+          if (consumed.has(b.id)) continue;
+          const dist = Math.hypot(b.x - a.x, b.y - a.y);
+          if (dist >= a.radius + b.radius) continue;
+
+          // 고중력 공은 닿은 과일에 흡수되어 그 과일의 중력을 강화한다.
+          if (a.specialType === "heavy" && b.kind === "fruit") {
+            consumed.add(a.id);
+            b.gravityMultiplier = Math.min(5, b.gravityMultiplier + 2);
+            createMergeEffect(b.x, b.y, b.tier, SPECIAL_BALLS.heavy.color);
+            playMergeSound(3);
+            break;
+          }
+
+          if (b.kind !== "special" || a.specialType !== b.specialType) continue;
+
+          const x = (a.x + b.x) / 2;
+          const y = (a.y + b.y) / 2;
+
+          if (a.specialType === "bomb") {
+            consumed.add(a.id);
+            consumed.add(b.id);
+            for (const fruit of fruits) {
+              if (fruit.kind !== "fruit" || consumed.has(fruit.id)) continue;
+              let dx = fruit.x - x;
+              let dy = fruit.y - y;
+              let distance = Math.hypot(dx, dy);
+              if (distance < 1) {
+                dx = Math.random() - 0.5;
+                dy = -1;
+                distance = Math.hypot(dx, dy);
+              }
+              const force = Math.max(220, 850 - distance * 2.2);
+              fruit.vx += (dx / distance) * force;
+              fruit.vy += (dy / distance) * force - 180;
+              fruit.settled = false;
+            }
+            createMergeEffect(x, y, 0, SPECIAL_BALLS.bomb.color);
+            screenShake = 10;
+            playTone({ frequency: 135, endFrequency: 55, duration: 0.3, volume: 0.11, type: "sawtooth" });
+            break;
+          }
+
+          if (a.specialType === "superCherry") {
+            consumed.add(a.id);
+            consumed.add(b.id);
+            for (let k = 0; k < 10; k++) {
+              const angle = (Math.PI * 2 * k) / 10;
+              const cherry = createFruit(0, x + Math.cos(angle) * 50, y + Math.sin(angle) * 50);
+              cherry.vx = Math.cos(angle) * 330;
+              cherry.vy = Math.sin(angle) * 330 - 150;
+              spawned.push(cherry);
+            }
+            createMergeEffect(x, y, 0, SPECIAL_BALLS.superCherry.color);
+            screenShake = 8;
+            playMergeSound(7);
+            break;
+          }
+        }
+      }
+
+      // 순서가 반대인 경우에도 고중력 공의 흡수를 처리한다.
+      for (const heavy of fruits) {
+        if (consumed.has(heavy.id) || heavy.kind !== "special" || heavy.specialType !== "heavy") continue;
+        const target = fruits.find((fruit) =>
+          !consumed.has(fruit.id) && fruit.kind === "fruit" &&
+          Math.hypot(fruit.x - heavy.x, fruit.y - heavy.y) < fruit.radius + heavy.radius
+        );
+        if (target) {
+          consumed.add(heavy.id);
+          target.gravityMultiplier = Math.min(5, target.gravityMultiplier + 2);
+          createMergeEffect(target.x, target.y, target.tier, SPECIAL_BALLS.heavy.color);
+          playMergeSound(3);
+        }
+      }
+
+      if (consumed.size) {
+        fruits = fruits.filter((fruit) => !consumed.has(fruit.id));
+        fruits.push(...spawned);
       }
     }
 
@@ -436,10 +746,12 @@
       for (let i = 0; i < fruits.length; i++) {
         const a = fruits[i];
         if (merged.has(a.id)) continue;
+        if (a.kind !== "fruit") continue;
 
         for (let j = i + 1; j < fruits.length; j++) {
           const b = fruits[j];
           if (merged.has(b.id)) continue;
+          if (b.kind !== "fruit") continue;
           if (a.tier !== b.tier || a.tier >= FRUITS.length - 1) continue;
 
           const dx = b.x - a.x;
@@ -457,7 +769,10 @@
           merged.add(b.id);
           toRemove.add(a.id);
           toRemove.add(b.id);
-          toAdd.push(createFruit(nextTier, nx, ny));
+          const mergedFruit = createFruit(nextTier, nx, ny);
+          // 고중력 성분은 다음 단계 과일로 병합된 뒤에도 유지된다.
+          mergedFruit.gravityMultiplier = Math.max(a.gravityMultiplier, b.gravityMultiplier);
+          toAdd.push(mergedFruit);
 
           createMergeEffect(nx, ny, nextTier);
           playMergeSound(nextTier);
@@ -520,7 +835,9 @@
 
           // 접촉 속도가 아주 작으면(쌓여서 정지한 상태) 반발을 주지 않아
           // 미세하게 계속 튕기며 settled 상태에 도달하지 못하는 것을 막는다.
-          const restitution = -velAlongNormal < 40 ? 0 : RESTITUTION;
+          const restitution = gameMode === "bouncy"
+            ? 0.96
+            : (-velAlongNormal < 40 ? 0 : RESTITUTION);
           const j2 = (-(1 + restitution) * velAlongNormal) / totalInv;
           const impulseX = j2 * nx;
           const impulseY = j2 * ny;
@@ -556,7 +873,7 @@
     // ---- 렌더링 ----
 
     function drawFruit(f) {
-      const def = FRUITS[f.tier];
+      const def = f.kind === "fruit" ? FRUITS[f.tier] : SPECIAL_BALLS[f.specialType];
       // 새 과일은 살짝 커졌다 제자리로 돌아오며 나타난다.
       const progress = Math.min(1, f.spawnAge / 0.22);
       const scale = progress < 1
@@ -565,6 +882,13 @@
       ctx.save();
       ctx.translate(f.x, f.y);
       ctx.scale(scale, scale);
+      if (f.kind === "fruit" && f.gravityMultiplier > 1) {
+        ctx.beginPath();
+        ctx.arc(0, 0, f.radius + 7, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(108, 92, 231, 0.75)";
+        ctx.lineWidth = 5;
+        ctx.stroke();
+      }
       ctx.beginPath();
       ctx.arc(0, 0, f.radius, 0, Math.PI * 2);
       ctx.fillStyle = def.color;
@@ -603,7 +927,7 @@
 
     function drawCurrentFruit() {
       if (isGameOver) return;
-      const def = FRUITS[currentFruitTier];
+      const def = getDropDefinition(currentDrop);
       const radius = def.radius;
       const x = Math.max(radius, Math.min(W - radius, pointerX));
       const y = LINE_Y - radius - 10;
@@ -675,7 +999,7 @@
       requestAnimationFrame(loop);
     }
 
-    resetGame();
+    changeMode("normal");
     requestAnimationFrame(loop);
   </script>
 </body>
